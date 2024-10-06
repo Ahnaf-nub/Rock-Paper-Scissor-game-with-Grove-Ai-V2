@@ -1,0 +1,226 @@
+#include <Seeed_Arduino_SSCMA.h>
+#include <TFT_eSPI.h>
+SSCMA GrooveAI;
+TFT_eSPI tft = TFT_eSPI();
+
+#define PAPER_TARGET     0
+#define ROCK_TARGET      1
+#define SCISSOR_TARGET   2
+
+bool is_paper = false;
+bool is_rock = false;
+bool is_scissor = false;
+
+int computerGuess = -1;
+int lastGuess = -1;
+unsigned long lastGuessTime = 0;
+int playerScore = 0;
+int computerScore = 0;
+int roundsPlayed = 0;
+const int totalRounds = 3;
+
+// Function to draw icons
+void drawRockIcon() {
+  tft.fillCircle(120, 100, 50, TFT_DARKGREY); // Rock icon
+}
+
+void drawPaperIcon() {
+  tft.fillRect(90, 70, 60, 100, TFT_WHITE);  // Paper icon
+}
+
+void drawScissorsIcon() {
+  tft.drawLine(80, 60, 160, 140, TFT_SILVER); // Scissor blade 1
+  tft.drawLine(160, 60, 80, 140, TFT_SILVER); // Scissor blade 2
+  tft.fillCircle(120, 100, 5, TFT_SILVER);    // Joint
+}
+
+void setup() {
+  Serial.begin(9600);
+  GrooveAI.begin();
+  tft.init();
+  tft.setRotation(1);
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextSize(2);
+  tft.setTextFont(2);
+  tft.setTextColor(TFT_BLUE, TFT_BLACK);
+  tft.setCursor(0, 0);
+  
+  // Display welcome message
+  tft.println("WELCOME TO ROCK-PAPER-SCISSORS!");
+  delay(2000); 
+
+  tft.fillScreen(TFT_BLACK); 
+  tft.setTextColor(TFT_GREEN);
+  tft.setCursor(0, 0);
+  tft.println("Game Starts Now!");
+  delay(1500);
+}
+
+void displayProcessing() {
+  tft.fillScreen(TFT_BLACK);
+  tft.setCursor(0, 0);
+  tft.setTextSize(3);
+  tft.setTextFont(2);
+  tft.setTextColor(TFT_ORANGE, TFT_BLACK);
+  tft.println("Processing...");
+}
+
+void displayComputerGuess(int guess) {
+  tft.fillScreen(TFT_BLACK);
+  tft.setCursor(0, 0);
+  tft.setTextSize(2);
+  tft.setTextFont(2); 
+
+  switch (guess) {
+    case ROCK_TARGET:
+      tft.setTextColor(TFT_CYAN, TFT_BLACK);
+      tft.println("Computer's Guess: ROCK");
+      drawRockIcon();
+      break;
+    case PAPER_TARGET:
+      tft.setTextColor(TFT_CYAN, TFT_BLACK);
+      tft.println("Computer's Guess: PAPER");
+      drawPaperIcon();
+      break;
+    case SCISSOR_TARGET:
+      tft.setTextColor(TFT_CYAN, TFT_BLACK);
+      tft.println("Computer's Guess: SCISSORS");
+      drawScissorsIcon();
+      break;
+  }
+}
+
+int determine_winner(int playerGuess, int computerGuess) {
+  if (playerGuess == computerGuess) {
+    return 2; // Draw
+  } else if ((playerGuess == PAPER_TARGET && computerGuess == ROCK_TARGET) ||     // Paper beats Rock
+             (playerGuess == ROCK_TARGET && computerGuess == SCISSOR_TARGET) ||   // Rock beats Scissors
+             (playerGuess == SCISSOR_TARGET && computerGuess == PAPER_TARGET)) {  // Scissors beat Paper
+    return 1; // Player wins
+  } else {
+    return 0; // Computer wins
+  }
+}
+
+void displayRoundInfo() {
+  tft.fillScreen(TFT_BLACK);  
+  tft.setCursor(0, 0);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_YELLOW);
+  tft.printf("Round %d of %d\n", roundsPlayed, totalRounds);
+  tft.printf("Score: Player %d - Computer %d\n", playerScore, computerScore);
+  delay(3000); // Show score for 3 seconds
+}
+
+void displayFinalWinner() {
+  tft.fillScreen(TFT_BLACK);
+  tft.setCursor(0, 0);
+  tft.setTextSize(3);
+  tft.setTextFont(2);
+
+  if (playerScore > computerScore) {
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    tft.println("YOU WIN THE GAME!");
+  } else if (computerScore > playerScore) {
+    tft.setTextColor(TFT_RED, TFT_BLACK);
+    tft.println("COMPUTER WINS THE GAME!");
+  } else {
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.println("IT'S A DRAW GAME!");
+  }
+
+  delay(2000);
+
+  // Reset the game state after showing the final winner
+  playerScore = 0;
+  computerScore = 0;
+  roundsPlayed = 0;
+  tft.fillScreen(TFT_BLACK);  // Clear screen for new game
+  tft.setCursor(0, 0);
+  tft.setTextColor(TFT_BLUE, TFT_BLACK);
+  tft.println("NEW GAME STARTING...");
+  delay(2000); // Pause before starting a new game
+}
+
+void loop() {
+  if (!GrooveAI.invoke()) {
+    bool found = false;
+    int playerGuess = -1;
+
+    // Calculate elapsed time since last guess
+    unsigned long currentTime = millis();
+    unsigned long elapsedTime = currentTime - lastGuessTime;
+
+    // Detect gestures
+    if (GrooveAI.boxes().size() > 0) {
+      // Show "Processing..." while detecting and processing the hand gesture
+      displayProcessing();
+
+      for (int i = 0; i < GrooveAI.boxes().size(); i++) {
+        if (GrooveAI.boxes()[i].target == ROCK_TARGET) {
+          is_rock = true;
+          playerGuess = ROCK_TARGET;
+        } else if (GrooveAI.boxes()[i].target == PAPER_TARGET) {
+          is_paper = true;
+          playerGuess = PAPER_TARGET;
+        } else if (GrooveAI.boxes()[i].target == SCISSOR_TARGET) {
+          is_scissor = true;
+          playerGuess = SCISSOR_TARGET;
+        }
+      }
+
+      if ((playerGuess != lastGuess || elapsedTime > 3000) && playerGuess != -1) {
+        found = true;
+        lastGuess = playerGuess;
+        lastGuessTime = currentTime;
+      }
+
+      if (found && roundsPlayed < totalRounds) {
+        // Generate computer's guess
+        computerGuess = random(0, 3);
+        displayComputerGuess(computerGuess);  // Show computer's guess on display
+
+        int result = determine_winner(playerGuess, computerGuess);
+
+        tft.setTextSize(3);
+        tft.setCursor(0, 200);
+
+        if (result == 2) {
+          tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+          tft.println("IT'S A DRAW!");
+        } else if (result == 1) {
+          tft.setTextColor(TFT_GREEN, TFT_BLACK);
+          tft.println("YOU WIN!");
+          playerScore++; // Increment player score
+        } else {
+          tft.setTextColor(TFT_RED, TFT_BLACK);
+          tft.println("COMPUTER WINS!");
+          computerScore++;
+        }
+
+        roundsPlayed++;
+
+        delay(1000); 
+        displayRoundInfo(); // Show current score and round information
+
+        // Reset states
+        is_rock = false;
+        is_paper = false;
+        is_scissor = false;
+
+        // Check if 3 rounds are done
+        if (roundsPlayed >= totalRounds) {
+          displayFinalWinner();
+        }
+      }
+    } else {
+      tft.fillScreen(TFT_BLACK);
+      tft.setCursor(0, 0);
+      tft.setTextSize(3);
+      tft.setTextFont(2);
+      tft.setTextColor(TFT_RED, TFT_BLACK);
+      tft.println("No hand detected");
+      lastGuess = -1; // Reset the last guess to ensure new gesture is captured when detected
+    }
+  }
+}
